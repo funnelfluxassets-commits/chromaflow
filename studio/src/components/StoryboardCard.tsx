@@ -14,6 +14,8 @@ import {
   Cpu,
   ExternalLink,
   Download,
+  FolderOpen,
+  Upload,
 } from 'lucide-react';
 import { uploadMediaToKie, DEFAULT_KIE_KEY, COLAB_NOTEBOOK_URL } from '../services/aiEngine';
 
@@ -305,7 +307,16 @@ export const StoryboardCard: React.FC<StoryboardCardProps> = ({
                   <span className="text-[10px] font-bold text-indigo-300 bg-black/60 px-2 py-0.5 rounded backdrop-blur-sm">
                     Starting Frame
                   </span>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => startFileRef.current?.click()}
+                      title="Search your Mac and select a new photo"
+                      className="px-2 py-0.5 rounded bg-indigo-600/80 hover:bg-indigo-600 text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors shadow"
+                    >
+                      <FolderOpen className="w-3 h-3 text-white" />
+                      <span>Search Photo</span>
+                    </button>
                     {scene.videoUrl && (
                       <button
                         type="button"
@@ -329,12 +340,23 @@ export const StoryboardCard: React.FC<StoryboardCardProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="text-center py-6 text-zinc-500 space-y-1.5">
-                <Film className="w-8 h-8 mx-auto opacity-40 text-indigo-400" />
+              <div
+                onClick={() => startFileRef.current?.click()}
+                className="text-center py-6 text-zinc-500 space-y-2 cursor-pointer group"
+              >
+                <Film className="w-8 h-8 mx-auto opacity-40 text-indigo-400 group-hover:scale-110 transition-transform" />
                 <p className="text-xs font-semibold text-zinc-300">Ready to Render</p>
-                <p className="text-[11px] text-zinc-500 max-w-[220px]">
-                  Generate an AI frame below or click Render to generate directly from your prompt.
-                </p>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startFileRef.current?.click();
+                  }}
+                  className="px-3 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-200 text-[11px] font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <FolderOpen className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Search & Upload Image</span>
+                </button>
               </div>
             )}
           </div>
@@ -344,7 +366,16 @@ export const StoryboardCard: React.FC<StoryboardCardProps> = ({
       {/* Unified Start Frame & End Frame Bar (ALWAYS VISIBLE ON ALL CARDS) */}
       <div className="grid grid-cols-2 gap-2.5 p-2.5 rounded-xl bg-zinc-900/60 border border-white/5">
         {/* Start Frame Slot */}
-        <input ref={startFileRef} type="file" accept="image/*" className="hidden" onChange={handleStartUpload} />
+        <input
+          ref={startFileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onClick={(e) => {
+            (e.currentTarget as HTMLInputElement).value = '';
+          }}
+          onChange={handleStartUpload}
+        />
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-zinc-400 font-bold flex items-center gap-1">
@@ -365,42 +396,53 @@ export const StoryboardCard: React.FC<StoryboardCardProps> = ({
 
           <div className="flex items-center gap-1.5">
             {scene.startImageUrl ? (
-              <div className="relative group w-9 h-9 rounded-lg overflow-hidden border border-indigo-500/40 shrink-0 bg-zinc-950">
+              <div
+                onClick={() => startFileRef.current?.click()}
+                title="Click to search and change image from your Mac"
+                className="relative group w-9 h-9 rounded-lg overflow-hidden border border-indigo-500/40 shrink-0 bg-zinc-950 cursor-pointer"
+              >
                 <img src={scene.startImageUrl} alt="Start" className="w-full h-full object-cover" />
-                <button
-                  type="button"
-                  onClick={() => onUpdateScene({ ...scene, startImageUrl: undefined })}
-                  className="absolute inset-0 bg-black/70 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white"
-                >
-                  <X className="w-3 h-3" />
-                </button>
+                <div className="absolute inset-0 bg-black/70 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-[9px] font-bold">
+                  Change
+                </div>
               </div>
             ) : null}
 
             <div className="flex items-center gap-1 flex-1 min-w-0">
               <button
                 type="button"
-                onClick={() => onGenerateFrame(scene.id)}
-                title="Synthesize visual frame using AI"
-                className="flex-1 py-1.5 px-2 rounded-lg bg-indigo-950/40 hover:bg-indigo-900/50 border border-indigo-500/30 text-indigo-300 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors truncate"
+                onClick={() => startFileRef.current?.click()}
+                title="Search your Mac to select an image file"
+                className="flex-1 py-1.5 px-2 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-200 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors truncate shadow-sm"
               >
-                <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
-                <span className="truncate">AI Frame</span>
+                <FolderOpen className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <span className="truncate">{scene.startImageUrl ? 'Change' : 'Upload'}</span>
               </button>
+
               <button
                 type="button"
-                onClick={() => startFileRef.current?.click()}
-                title="Upload custom image"
-                className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-zinc-400 hover:text-white cursor-pointer transition-colors shrink-0"
+                onClick={() => onGenerateFrame(scene.id)}
+                title="Generate starting frame using AI text prompt"
+                className="py-1.5 px-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-amber-300 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors shrink-0"
               >
-                <ImageIcon className="w-3.5 h-3.5" />
+                <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
+                <span>AI</span>
               </button>
             </div>
           </div>
         </div>
 
         {/* End Frame Slot (FLF2V Transition) */}
-        <input ref={endFileRef} type="file" accept="image/*" className="hidden" onChange={handleEndUpload} />
+        <input
+          ref={endFileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onClick={(e) => {
+            (e.currentTarget as HTMLInputElement).value = '';
+          }}
+          onChange={handleEndUpload}
+        />
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-zinc-400 font-bold flex items-center gap-1">
@@ -420,24 +462,24 @@ export const StoryboardCard: React.FC<StoryboardCardProps> = ({
           </div>
 
           {scene.endImageUrl ? (
-            <div className="relative group w-full h-9 rounded-lg overflow-hidden border border-purple-500/40 bg-zinc-950">
+            <div
+              onClick={() => endFileRef.current?.click()}
+              title="Click to search and change end frame from your Mac"
+              className="relative group w-full h-9 rounded-lg overflow-hidden border border-purple-500/40 bg-zinc-950 cursor-pointer"
+            >
               <img src={scene.endImageUrl} alt="End" className="w-full h-full object-cover" />
-              <button
-                type="button"
-                onClick={() => onUpdateScene({ ...scene, endImageUrl: undefined })}
-                className="absolute inset-0 bg-black/70 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white"
-              >
-                <X className="w-3 h-3" />
-              </button>
+              <div className="absolute inset-0 bg-black/70 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-[9px] font-bold">
+                Change End
+              </div>
             </div>
           ) : (
             <button
               type="button"
               onClick={() => endFileRef.current?.click()}
-              title="Upload end frame for smooth morphing transition (FLF2V)"
-              className="w-full h-9 rounded-lg border border-dashed border-zinc-800 hover:border-purple-500/50 text-[10px] text-zinc-400 flex items-center justify-center gap-1 transition-colors cursor-pointer"
+              title="Search your Mac for an ending transition frame (FLF2V)"
+              className="w-full h-9 rounded-lg border border-dashed border-zinc-800 hover:border-purple-500/50 bg-zinc-900/30 text-[10px] text-zinc-300 font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
-              <ArrowRight className="w-3 h-3 text-purple-400 shrink-0" />
+              <ArrowRight className="w-3.5 h-3.5 text-purple-400 shrink-0" />
               <span className="truncate">Upload End</span>
             </button>
           )}
