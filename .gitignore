@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+.npm-cache/
+
+# Production Build
+dist/
+build/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+
+# Large Generated Media Assets
+outputs/*.mp4
+inputs/temp/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Environment Variables
+.env
+.env.local

@@ -1,0 +1,8 @@
+{
+  "name": "chromaflow",
+  "private": true,
+  "scripts": {
+    "build": "npm run build --prefix studio",
+    "dev": "npm run dev --prefix studio"
+  }
+}
