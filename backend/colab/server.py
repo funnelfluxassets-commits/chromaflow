@@ -169,11 +169,19 @@ def synthesize_gpu_motion_frames(
         indexing="ij",
     )
 
+    # Low-res coordinate grid for soft bokeh glow (16x faster on CPU & GPU, visually identical)
+    bh, bw = max(32, h // 4), max(32, w // 4)
+    bgy, bgx = torch.meshgrid(
+        torch.linspace(-1.0, 1.0, bh, device=DEVICE),
+        torch.linspace(-1.0, 1.0, bw, device=DEVICE),
+        indexing="ij",
+    )
+
     # Radial vignette & edge depth-of-field mask (center = 0, edges = 1)
     radial_dist = torch.clamp((gx ** 2 + gy ** 2) * 0.65, 0.0, 1.0)
     vignette = (1.0 - 0.18 * (radial_dist ** 1.5)).unsqueeze(0).unsqueeze(0)
 
-    # Pre-configure 12 soft golden bokeh particles (for warm grill/studio atmosphere)
+    # Pre-configure 10 soft golden bokeh particles (for warm grill/studio atmosphere)
     rng = np.random.default_rng(seed if (seed is not None and seed >= 0) else 42)
     particles = []
     for _ in range(10):
@@ -186,6 +194,8 @@ def synthesize_gpu_motion_frames(
             "intensity": float(rng.uniform(0.05, 0.12)),
             "phase": float(rng.uniform(0, math.pi * 2)),
         })
+
+    sample_mode = "bicubic" if DEVICE == "cuda" else "bilinear"
 
     with torch.no_grad():
         for i in range(num_frames):
@@ -223,7 +233,7 @@ def synthesize_gpu_motion_frames(
             sample_y = gy * zoom + ty
             grid = torch.stack([sample_x, sample_y], dim=-1).unsqueeze(0)
 
-            sharp_frame = F.grid_sample(base_tensor, grid, mode="bicubic", padding_mode="border", align_corners=True)
+            sharp_frame = F.grid_sample(base_tensor, grid, mode=sample_mode, padding_mode="border", align_corners=True)
             blur_frame = F.grid_sample(blur_tensor, grid, mode="bilinear", padding_mode="border", align_corners=True)
 
             # Opening rack-focus (first 20% of clip pulls from soft bokeh to tack-sharp) + subtle edge shallow DOF
@@ -232,22 +242,22 @@ def synthesize_gpu_motion_frames(
             warped = sharp_frame * (1.0 - dof_mask) + blur_frame * dof_mask
 
             if end_tensor is not None:
-                warped_end = F.grid_sample(end_tensor, grid, mode="bicubic", padding_mode="border", align_corners=True)
+                warped_end = F.grid_sample(end_tensor, grid, mode=sample_mode, padding_mode="border", align_corners=True)
                 warped = warped * (1.0 - t) + warped_end * t
 
-            # Subtle rising warm heat-steam & soft golden bokeh (very delicate, never stripes)
-            bokeh_layer = torch.zeros((1, 3, h, w), device=DEVICE)
+            # Subtle rising warm heat-steam & soft golden bokeh (computed at 1/4 grid for 16x speed)
+            bokeh_small = torch.zeros((1, 3, bh, bw), device=DEVICE)
             for p in particles:
                 px = p["x0"] + p["vx"] * t_lin
                 py = ((p["y0"] + p["vy"] * t_lin + 1.0) % 2.0) - 1.0
-                dist2 = ((gx - px) ** 2 + (gy - py) ** 2) / (p["size"] ** 2)
+                dist2 = ((bgx - px) ** 2 + (bgy - py) ** 2) / (p["size"] ** 2)
                 pulse = 0.65 + 0.35 * math.sin(t_lin * 6.0 + p["phase"])
                 glow = torch.exp(-dist2 * 2.5) * (p["intensity"] * pulse)
-                # Warm golden-amber bokeh tint
-                bokeh_layer[:, 0] += glow * 1.0
-                bokeh_layer[:, 1] += glow * 0.72
-                bokeh_layer[:, 2] += glow * 0.35
+                bokeh_small[:, 0] += glow * 1.0
+                bokeh_small[:, 1] += glow * 0.72
+                bokeh_small[:, 2] += glow * 0.35
 
+            bokeh_layer = F.interpolate(bokeh_small, size=(h, w), mode="bilinear", align_corners=False)
             warped = torch.clamp((warped + bokeh_layer) * vignette, 0.0, 1.0)
 
             frame_np = (warped.squeeze(0).permute(1, 2, 0).cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
