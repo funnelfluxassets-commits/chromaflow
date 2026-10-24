@@ -152,7 +152,7 @@ export function generateFramePollinations(
 ): string {
   const [w, h] = aspectRatio === '9:16' ? [720, 1280] : aspectRatio === '16:9' ? [1280, 720] : [1024, 1024];
   const cleanPrompt = encodeURIComponent(`${prompt}, cinematic lighting, photorealistic 8k, highly detailed`);
-  return `https://image.pollinations.ai/prompt/${cleanPrompt}?width=${w}&height=${h}&model=flux&nologo=true&seed=${Math.floor(Math.random() * 9999999)}`;
+  return `https://image.pollinations.ai/prompt/${cleanPrompt}?width=${w}&height=${h}&model=turbo&nologo=true&seed=${Math.floor(Math.random() * 9999999)}`;
 }
 
 /**

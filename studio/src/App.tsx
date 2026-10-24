@@ -6,7 +6,7 @@ import { ScriptModal } from './components/ScriptModal';
 import { StoryboardCard } from './components/StoryboardCard';
 import { TimelineBar } from './components/TimelineBar';
 import { SettingsModal } from './components/SettingsModal';
-import { Wand2, Plus, Sparkles, Film, ArrowRight, ShieldCheck, Cpu, ExternalLink, CheckCircle2 } from 'lucide-react';
+import { Wand2, Plus, Sparkles, Film, ArrowRight, ShieldCheck, Cpu, ExternalLink, CheckCircle2, RefreshCw } from 'lucide-react';
 import {
   DEFAULT_KIE_KEY,
   COLAB_NOTEBOOK_URL,
@@ -29,6 +29,7 @@ const INITIAL_SCENES: StoryboardScene[] = [
     status: 'completed',
     progress: 100,
     progressStage: 'Render Complete',
+    startImageUrl: '/samples/grill_chicken.jpg',
     videoUrl: 'https://tempfile.aiquickdraw.com/k/684d017a8dc7b541ab0a720c0db3fb1b_1_1792738358_2986.mp4',
   },
   {
@@ -42,6 +43,7 @@ const INITIAL_SCENES: StoryboardScene[] = [
     status: 'completed',
     progress: 100,
     progressStage: 'Render Complete',
+    startImageUrl: '/samples/crispy_chips.jpg',
     videoUrl: 'https://tempfile.aiquickdraw.com/k/6d347c57c3785c8f245af11c285c5d09_1_1792739599_7171.mp4',
   },
   {
@@ -52,8 +54,11 @@ const INITIAL_SCENES: StoryboardScene[] = [
     visualPrompt: 'Rich glossy sweet chili basting sauce drizzling slowly over a flame-grilled chicken burger, seeded brioche bun, melting cheese, macro lens, 8k commercial food lighting',
     motionPrompt: 'Slow vertical tilt down following the thick sauce droplet cascading onto the meat',
     durationSec: 5,
-    status: 'idle',
+    status: 'completed',
+    progress: 100,
+    progressStage: 'Render Complete',
     startImageUrl: '/samples/burger_sauce.jpg',
+    videoUrl: 'https://tempfile.aiquickdraw.com/k/684d017a8dc7b541ab0a720c0db3fb1b_1_1792738358_2986.mp4',
   },
 ];
 
@@ -289,6 +294,65 @@ export const App: React.FC = () => {
     }
   };
 
+  // Demo simulation render for instant testing without GPU
+  const handleDemoRenderScene = async (id: string) => {
+    const targetScene = scenes.find((s) => s.id === id);
+    if (!targetScene) return;
+
+    setScenes((prev) =>
+      prev.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              status: 'generating',
+              progress: 25,
+              elapsedSec: 1,
+              progressStage: 'Demo: Synthesizing photorealistic camera frames...',
+              errorMessage: undefined,
+              videoUrl: undefined,
+            }
+          : s
+      )
+    );
+
+    await new Promise((r) => setTimeout(r, 1000));
+    setScenes((prev) =>
+      prev.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              progress: 65,
+              elapsedSec: 2,
+              progressStage: 'Demo: Interpolating 24fps cinema motion...',
+            }
+          : s
+      )
+    );
+
+    await new Promise((r) => setTimeout(r, 1200));
+    const sampleDemoVideo =
+      targetScene.sceneNumber === 2
+        ? 'https://tempfile.aiquickdraw.com/k/6d347c57c3785c8f245af11c285c5d09_1_1792739599_7171.mp4'
+        : 'https://tempfile.aiquickdraw.com/k/684d017a8dc7b541ab0a720c0db3fb1b_1_1792738358_2986.mp4';
+
+    setScenes((prev) =>
+      prev.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              status: 'completed',
+              progress: 100,
+              elapsedSec: 3,
+              progressStage: 'Render Complete',
+              videoUrl: sampleDemoVideo,
+              errorMessage: undefined,
+            }
+          : s
+      )
+    );
+    setFinalMovieUrl(sampleDemoVideo);
+  };
+
   // Upscale Scene to True 4K UHD Super-Resolution
   const handleUpscaleScene = async (id: string) => {
     const targetScene = scenes.find((s) => s.id === id);
@@ -501,6 +565,15 @@ export const App: React.FC = () => {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => setScenes(INITIAL_SCENES)}
+              title="Reset demo scenes and sample photos"
+              className="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-xs font-semibold text-zinc-400 hover:text-white flex items-center gap-1.5 cursor-pointer transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Reset Samples</span>
+            </button>
+            <button
+              type="button"
               onClick={handleAddScene}
               className="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-xs font-semibold text-zinc-300 flex items-center gap-1.5 cursor-pointer transition-colors"
             >
@@ -528,6 +601,7 @@ export const App: React.FC = () => {
               onGenerateScene={handleGenerateScene}
               onGenerateFrame={handleGenerateFrame}
               onUpscaleScene={handleUpscaleScene}
+              onDemoRenderScene={handleDemoRenderScene}
             />
           ))}
         </div>
