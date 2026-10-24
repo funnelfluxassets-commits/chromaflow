@@ -52,16 +52,22 @@ export const StoryboardCard: React.FC<StoryboardCardProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [inlineColabInput, setInlineColabInput] = useState('');
 
+  const fileToDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
   const handleStartUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Optimistic local preview
-    const localUrl = URL.createObjectURL(file);
-    onUpdateScene({ ...scene, startImageUrl: localUrl });
+    const dataUrl = await fileToDataUrl(file);
+    onUpdateScene({ ...scene, startImageUrl: dataUrl });
 
-    // Upload to Kie.ai for public CDN URL if using Kling
-    if (engine === 'kling') {
+    if (engine === 'kling' && (klingApiKey || DEFAULT_KIE_KEY)) {
       try {
         setIsUploading(true);
         const publicUrl = await uploadMediaToKie(file, klingApiKey || DEFAULT_KIE_KEY);
@@ -78,10 +84,10 @@ export const StoryboardCard: React.FC<StoryboardCardProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const localUrl = URL.createObjectURL(file);
-    onUpdateScene({ ...scene, endImageUrl: localUrl });
+    const dataUrl = await fileToDataUrl(file);
+    onUpdateScene({ ...scene, endImageUrl: dataUrl });
 
-    if (engine === 'kling') {
+    if (engine === 'kling' && (klingApiKey || DEFAULT_KIE_KEY)) {
       try {
         setIsUploading(true);
         const publicUrl = await uploadMediaToKie(file, klingApiKey || DEFAULT_KIE_KEY);
@@ -135,7 +141,7 @@ export const StoryboardCard: React.FC<StoryboardCardProps> = ({
       </div>
 
       {/* Media Canvas / Preview Area */}
-      <div className="relative w-full rounded-xl bg-zinc-950 overflow-hidden border border-white/5 flex items-center justify-center min-h-[200px]">
+      <div className="relative w-full rounded-xl bg-zinc-950 overflow-hidden border border-white/5 flex flex-col items-center justify-center min-h-[200px]">
         {scene.status === 'generating' ? (
           <div className="p-5 w-full text-center space-y-3 animate-fadeIn">
             <div className="flex items-center justify-between text-xs font-mono px-2">
@@ -166,7 +172,7 @@ export const StoryboardCard: React.FC<StoryboardCardProps> = ({
               <div>
                 <p className="text-xs font-bold text-white">Connect Free Google Colab GPU</p>
                 <p className="text-[11px] text-zinc-400 mt-0.5">
-                  Pre-configured with Wan 2.1, LTX-Video, FLF2V & True 4K UHD Upscaler (100% Free)
+                  Pre-configured with SVD-XT Neural Video, SD-Turbo & True 4K UHD Upscaler (100% Free)
                 </p>
               </div>
 
@@ -286,7 +292,7 @@ export const StoryboardCard: React.FC<StoryboardCardProps> = ({
             </div>
           </div>
         ) : (
-          <div className="p-3 w-full space-y-3">
+          <div className="p-3 w-full">
             {scene.startImageUrl ? (
               <div className="relative group w-full h-[150px] rounded-xl overflow-hidden border border-indigo-500/30">
                 <img
@@ -298,90 +304,65 @@ export const StoryboardCard: React.FC<StoryboardCardProps> = ({
                   <span className="text-[10px] font-bold text-indigo-300 bg-black/60 px-2 py-0.5 rounded backdrop-blur-sm">
                     Starting Frame
                   </span>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => onGenerateFrame(scene.id)}
-                      title="Re-generate AI Frame"
-                      className="px-2 py-1 rounded bg-zinc-800/80 hover:bg-zinc-700 text-amber-300 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      <Sparkles className="w-3 h-3" />
-                      <span>Re-roll</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onUpdateScene({ ...scene, startImageUrl: undefined })}
-                      title="Clear Image"
-                      className="p-1 rounded bg-black/70 hover:bg-red-500 text-white cursor-pointer transition-colors"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onUpdateScene({ ...scene, startImageUrl: undefined })}
+                    title="Clear Image (Generate Purely from Prompt)"
+                    className="p-1 rounded bg-black/70 hover:bg-red-500 text-white cursor-pointer transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
                 </div>
               </div>
             ) : (
-              <div className="text-center py-2 text-zinc-500 space-y-1">
+              <div className="text-center py-4 text-zinc-500 space-y-1">
                 <Film className="w-7 h-7 mx-auto opacity-40 text-indigo-400" />
-                <p className="text-[11px] font-medium text-zinc-400">Ready to Render</p>
+                <p className="text-[11px] font-medium text-zinc-400">Ready to Generate from Prompt</p>
               </div>
             )}
-
-            {/* Frame Slots */}
-            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/5">
-              {/* Start Frame Slot */}
-              <input ref={startFileRef} type="file" accept="image/*" className="hidden" onChange={handleStartUpload} />
-              <div className="text-center space-y-1">
-                <span className="text-[10px] text-zinc-400 block font-semibold">Start Frame</span>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => onGenerateFrame(scene.id)}
-                    title="Generate visual starting frame using AI"
-                    className="flex-1 py-1.5 px-2 rounded-lg bg-indigo-950/40 hover:bg-indigo-900/50 border border-indigo-500/30 text-indigo-300 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
-                  >
-                    <Sparkles className="w-3 h-3 text-amber-400" />
-                    <span>AI Frame</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => startFileRef.current?.click()}
-                    title="Upload custom image"
-                    className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-zinc-400 hover:text-white cursor-pointer transition-colors"
-                  >
-                    <ImageIcon className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              {/* End Frame Slot (FLF2V) */}
-              <input ref={endFileRef} type="file" accept="image/*" className="hidden" onChange={handleEndUpload} />
-              <div className="text-center space-y-1">
-                <span className="text-[10px] text-zinc-400 block font-semibold">End Frame (Transition)</span>
-                {scene.endImageUrl ? (
-                  <div className="relative group w-full h-8 rounded-lg overflow-hidden border border-purple-500/40">
-                    <img src={scene.endImageUrl} alt="End" className="w-full h-full object-cover" />
-                    <button
-                      type="button"
-                      onClick={() => onUpdateScene({ ...scene, endImageUrl: undefined })}
-                      className="absolute inset-0 bg-black/70 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => endFileRef.current?.click()}
-                    className="w-full py-1.5 px-2 rounded-lg border border-dashed border-zinc-800 hover:border-purple-500/50 text-[10px] text-zinc-400 flex items-center justify-center gap-1 transition-colors cursor-pointer"
-                  >
-                    <ArrowRight className="w-3 h-3 text-purple-400" />
-                    <span>Upload End</span>
-                  </button>
-                )}
-              </div>
-            </div>
           </div>
         )}
+
+        {/* Always-Visible Reference / Starting Frame Bar */}
+        <div className="w-full px-3 py-2 bg-zinc-900/80 border-t border-white/5 flex items-center justify-between gap-2 text-[10px]">
+          <input ref={startFileRef} type="file" accept="image/*" className="hidden" onChange={handleStartUpload} />
+          <input ref={endFileRef} type="file" accept="image/*" className="hidden" onChange={handleEndUpload} />
+
+          <div className="flex items-center gap-2 min-w-0">
+            {scene.startImageUrl ? (
+              <div className="flex items-center gap-1.5 min-w-0">
+                <img
+                  src={scene.startImageUrl}
+                  alt="Start"
+                  className="w-6 h-6 rounded object-cover border border-indigo-500/40 shrink-0"
+                />
+                <span className="text-indigo-300 font-semibold truncate">Custom Start Image</span>
+                <button
+                  type="button"
+                  onClick={() => onUpdateScene({ ...scene, startImageUrl: undefined })}
+                  title="Remove start image so AI generates fresh from your Visual Prompt"
+                  className="p-0.5 rounded bg-zinc-800 hover:bg-red-500/80 text-zinc-300 hover:text-white cursor-pointer"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ) : (
+              <span className="text-zinc-400 truncate">Source: AI Prompt Generation</span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => startFileRef.current?.click()}
+              title="Upload custom starting photo"
+              className="px-2 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 border border-white/10 text-zinc-300 hover:text-white font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+            >
+              <ImageIcon className="w-3 h-3 text-indigo-400" />
+              <span>{scene.startImageUrl ? 'Change Photo' : 'Upload Photo'}</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Prompt Inputs */}

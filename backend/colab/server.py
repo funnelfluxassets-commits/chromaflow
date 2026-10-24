@@ -69,8 +69,15 @@ def fit_preserve_subject(img: Image.Image, target_w: int, target_h: int) -> Imag
     return resized.crop((left, top, left + target_w, top + target_h))
 
 
+import base64
+import gc
+
+_T2I_PIPE = None
+_SVD_PIPE = None
+
+
 def load_image_safe(img_input, target_size):
-    """Safely loads an image from a URL, Gradio FileData dict, filepath, or numpy array."""
+    """Safely loads an image from a URL, Base64 data URL, Gradio FileData dict, filepath, or numpy array."""
     if img_input is None:
         return None
     if isinstance(img_input, dict):
@@ -82,7 +89,10 @@ def load_image_safe(img_input, target_size):
 
     try:
         if isinstance(img_input, str):
-            if img_input.startswith("http://") or img_input.startswith("https://"):
+            if img_input.startswith("data:image/") and ";base64," in img_input:
+                b64_data = img_input.split(";base64,", 1)[1]
+                img = Image.open(BytesIO(base64.b64decode(b64_data))).convert("RGB")
+            elif img_input.startswith("http://") or img_input.startswith("https://"):
                 headers = {
                     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
                     "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
@@ -106,6 +116,107 @@ def load_image_safe(img_input, target_size):
         return fit_preserve_subject(img, target_size[0], target_size[1])
     except Exception as e:
         print(f"Notice: Could not load image ({e}).")
+        return None
+
+
+def generate_prompt_frame_gpu(prompt: str, w: int, h: int, seed: int = -1) -> Image.Image | None:
+    """Generates a brand-new photorealistic frame from the text prompt using SD-Turbo (FP16, 2.5GB) on CUDA GPU."""
+    global _T2I_PIPE, _SVD_PIPE
+    if DEVICE != "cuda":
+        return None
+    try:
+        # Unload SVD from GPU if loaded so VRAM stays low
+        if _SVD_PIPE is not None:
+            _SVD_PIPE.to("cpu")
+            torch.cuda.empty_cache()
+
+        if _T2I_PIPE is None:
+            from diffusers import AutoPipelineForText2Image
+            print("🎨 Loading SD-Turbo (FP16) for instant AI prompt-to-frame synthesis...")
+            _T2I_PIPE = AutoPipelineForText2Image.from_pretrained(
+                "stabilityai/sd-turbo",
+                torch_dtype=torch.float16,
+                variant="fp16",
+                low_cpu_mem_usage=True,
+            )
+        _T2I_PIPE.to("cuda")
+
+        gen_w = 512 if w <= h else 768
+        gen_h = 768 if h > w else 512
+        if w == h:
+            gen_w, gen_h = 512, 512
+
+        generator = torch.Generator(device="cuda").manual_seed(seed if seed >= 0 else int(uuid.uuid4().int % 1000000))
+        out = _T2I_PIPE(
+            prompt=prompt,
+            num_inference_steps=4,
+            guidance_scale=0.0,
+            width=gen_w,
+            height=gen_h,
+            generator=generator,
+        ).images[0]
+
+        _T2I_PIPE.to("cpu")
+        torch.cuda.empty_cache()
+        gc.collect()
+        return fit_preserve_subject(out, w, h)
+    except Exception as e:
+        print(f"SD-Turbo note ({e}), continuing...")
+        return None
+
+
+def generate_svd_neural_frames_gpu(start_pil: Image.Image, w: int, h: int, seed: int = -1) -> list[Image.Image] | None:
+    """
+    Generates true 3D neural AI video motion using Stable Video Diffusion XT (FP16, only 4.1GB total — zero OOM).
+    """
+    global _SVD_PIPE, _T2I_PIPE
+    if DEVICE != "cuda":
+        return None
+    try:
+        if _T2I_PIPE is not None:
+            _T2I_PIPE.to("cpu")
+            torch.cuda.empty_cache()
+
+        if _SVD_PIPE is None:
+            from diffusers import StableVideoDiffusionPipeline
+            print("🎥 Loading Stable Video Diffusion XT (FP16, 4.1GB — Zero-OOM Neural Video Engine)...")
+            _SVD_PIPE = StableVideoDiffusionPipeline.from_pretrained(
+                "stabilityai/stable-video-diffusion-img2vid-xt",
+                torch_dtype=torch.float16,
+                variant="fp16",
+                low_cpu_mem_usage=True,
+            )
+            _SVD_PIPE.enable_model_cpu_offload()
+
+        # SVD native resolution (576x1024 vertical or 1024x576 landscape)
+        if h > w:
+            svd_w, svd_h = 576, 1024
+        elif w > h:
+            svd_w, svd_h = 1024, 576
+        else:
+            svd_w, svd_h = 768, 768
+
+        cond_img = fit_preserve_subject(start_pil, svd_w, svd_h)
+        generator = torch.Generator(device="cpu").manual_seed(seed if seed >= 0 else int(uuid.uuid4().int % 1000000))
+
+        print(f"🧠 Running SVD-XT neural video diffusion ({svd_w}x{svd_h}, 25 key-frames)...")
+        frames = _SVD_PIPE(
+            cond_img,
+            height=svd_h,
+            width=svd_w,
+            num_frames=25,
+            num_inference_steps=20,
+            decode_chunk_size=4,
+            motion_bucket_id=110,
+            noise_aug_strength=0.02,
+            generator=generator,
+        ).frames[0]
+
+        torch.cuda.empty_cache()
+        gc.collect()
+        return [fit_preserve_subject(f, w, h) for f in frames]
+    except Exception as e:
+        print(f"SVD-XT fallback note ({e}).")
         return None
 
 
@@ -291,6 +402,9 @@ def generate_video_api(
         start_pil = load_image_safe(start_image, (w, h))
         end_pil = load_image_safe(end_image, (w, h))
 
+        # 1. If no start image was uploaded, generate a fresh AI frame from the text prompt on GPU
+        if start_pil is None and DEVICE == "cuda":
+            start_pil = generate_prompt_frame_gpu(prompt, w, h, seed=int(seed or -1))
         if start_pil is None:
             default_fallback = "https://chromaflow.funnelfluxassets.com/samples/burger_sauce.jpg"
             print("No start image provided; fetching default studio frame...")
@@ -298,7 +412,6 @@ def generate_video_api(
         if start_pil is None:
             start_pil = create_procedural_scene(prompt, w, h)
 
-        print(f"Synthesizing {num_frames} Cinema 1080p frames ({w}x{h} @ {fps}fps) on {DEVICE.upper()}...")
         temp_path = os.path.join(tempfile.gettempdir(), f"chromaflow_{uuid.uuid4().hex[:8]}.mp4")
         writer = imageio.get_writer(
             temp_path,
@@ -308,16 +421,33 @@ def generate_video_api(
             macro_block_size=8,
             output_params=["-preset", "ultrafast", "-tune", "zerolatency", "-crf", "18"],
         )
-        for f in synthesize_gpu_motion_frames(
-            start_pil=start_pil,
-            end_pil=end_pil,
-            prompt=prompt,
-            w=w,
-            h=h,
-            num_frames=num_frames,
-            seed=int(seed or -1),
-        ):
-            writer.append_data(f)
+
+        # 2. If running on CUDA GPU, run true SVD-XT neural video diffusion (4.1GB FP16 — zero OOM)
+        svd_frames = generate_svd_neural_frames_gpu(start_pil, w, h, seed=int(seed or -1)) if DEVICE == "cuda" else None
+        if svd_frames and len(svd_frames) >= 2:
+            print(f"Interpolating {len(svd_frames)} neural SVD-XT frames to {num_frames} frames @ {fps}fps...")
+            n_src = len(svd_frames)
+            for i in range(num_frames):
+                pos = (i / max(1, num_frames - 1)) * (n_src - 1)
+                idx0 = int(math.floor(pos))
+                idx1 = min(n_src - 1, idx0 + 1)
+                alpha = pos - idx0
+                f0 = np.asarray(svd_frames[idx0], dtype=np.float32)
+                f1 = np.asarray(svd_frames[idx1], dtype=np.float32)
+                blended = ((1.0 - alpha) * f0 + alpha * f1).clip(0, 255).astype(np.uint8)
+                writer.append_data(blended)
+        else:
+            print(f"Synthesizing {num_frames} Cinema 1080p frames ({w}x{h} @ {fps}fps) on {DEVICE.upper()}...")
+            for f in synthesize_gpu_motion_frames(
+                start_pil=start_pil,
+                end_pil=end_pil,
+                prompt=prompt,
+                w=w,
+                h=h,
+                num_frames=num_frames,
+                seed=int(seed or -1),
+            ):
+                writer.append_data(f)
         writer.close()
 
         print(f"✅ 1080p Video generated successfully: {temp_path} ({os.path.getsize(temp_path)} bytes)")

@@ -29,7 +29,6 @@ const INITIAL_SCENES: StoryboardScene[] = [
     status: 'completed',
     progress: 100,
     progressStage: 'Render Complete',
-    startImageUrl: '/samples/grill_chicken.jpg',
     videoUrl: 'https://tempfile.aiquickdraw.com/k/684d017a8dc7b541ab0a720c0db3fb1b_1_1792738358_2986.mp4',
   },
   {
@@ -43,7 +42,6 @@ const INITIAL_SCENES: StoryboardScene[] = [
     status: 'completed',
     progress: 100,
     progressStage: 'Render Complete',
-    startImageUrl: '/samples/crispy_chips.jpg',
     videoUrl: 'https://tempfile.aiquickdraw.com/k/6d347c57c3785c8f245af11c285c5d09_1_1792739599_7171.mp4',
   },
   {
@@ -218,7 +216,7 @@ export const App: React.FC = () => {
         }
 
         finalVideoUrl = await generateVideoColab(
-          targetScene.motionPrompt || targetScene.visualPrompt,
+          `${targetScene.visualPrompt || ''}. ${targetScene.motionPrompt || ''}`.trim(),
           colabUrl,
           targetScene.startImageUrl,
           targetScene.endImageUrl,
