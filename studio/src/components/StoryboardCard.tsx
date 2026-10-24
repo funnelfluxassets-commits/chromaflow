@@ -16,6 +16,7 @@ import {
   UploadCloud,
   Cpu,
   ExternalLink,
+  Download,
 } from 'lucide-react';
 import { uploadMediaToKie, DEFAULT_KIE_KEY, COLAB_NOTEBOOK_URL } from '../services/aiEngine';
 
@@ -135,23 +136,7 @@ export const StoryboardCard: React.FC<StoryboardCardProps> = ({
 
       {/* Media Canvas / Preview Area */}
       <div className="relative w-full rounded-xl bg-zinc-950 overflow-hidden border border-white/5 flex items-center justify-center min-h-[200px]">
-        {scene.videoUrl ? (
-          <div className="relative w-full h-full flex items-center justify-center bg-black">
-            <video
-              src={scene.videoUrl}
-              controls
-              autoPlay
-              loop
-              muted
-              playsInline
-              className="w-full h-full object-contain rounded-xl max-h-[260px]"
-            />
-            <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-sm text-[10px] text-emerald-400 font-mono flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-              <span>AI Video Ready</span>
-            </div>
-          </div>
-        ) : scene.status === 'generating' ? (
+        {scene.status === 'generating' ? (
           <div className="p-5 w-full text-center space-y-3 animate-fadeIn">
             <div className="flex items-center justify-between text-xs font-mono px-2">
               <span className="text-indigo-400 font-bold flex items-center gap-1.5 text-left truncate mr-2">
@@ -181,7 +166,7 @@ export const StoryboardCard: React.FC<StoryboardCardProps> = ({
               <div>
                 <p className="text-xs font-bold text-white">Connect Free Google Colab GPU</p>
                 <p className="text-[11px] text-zinc-400 mt-0.5">
-                  Pre-configured with Wan 2.1, LTX-Video, FLF2V & 4K Upscaler (100% Free)
+                  Pre-configured with Wan 2.1, LTX-Video, FLF2V & True 4K UHD Upscaler (100% Free)
                 </p>
               </div>
 
@@ -237,28 +222,69 @@ export const StoryboardCard: React.FC<StoryboardCardProps> = ({
                     className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-white/10 text-white font-mono text-[11px] focus:outline-none focus:border-purple-500"
                   />
                   {inlineColabInput.trim() && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setColabUrl(inlineColabInput.trim());
-                        setTimeout(() => onGenerateScene(scene.id), 100);
-                      }}
-                      className="w-full py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors cursor-pointer"
-                    >
-                      Save New Link & Render
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setColabUrl(inlineColabInput.trim());
+                          setTimeout(() => onGenerateScene(scene.id), 100);
+                        }}
+                        className="flex-1 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        Save & Render
+                      </button>
+                      {scene.videoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setColabUrl(inlineColabInput.trim());
+                            setTimeout(() => onUpscaleScene(scene.id), 100);
+                          }}
+                          className="flex-1 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors cursor-pointer"
+                        >
+                          Save & 4K Upscale
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
-              <button
-                type="button"
-                onClick={() => onGenerateScene(scene.id)}
-                className="px-3 py-1.5 rounded-lg bg-red-600/30 hover:bg-red-600/50 text-red-200 border border-red-500/40 text-xs font-semibold cursor-pointer transition-colors"
-              >
-                Retry Generation
-              </button>
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onGenerateScene(scene.id)}
+                  className="px-3 py-1.5 rounded-lg bg-red-600/30 hover:bg-red-600/50 text-red-200 border border-red-500/40 text-xs font-semibold cursor-pointer transition-colors"
+                >
+                  Retry Render
+                </button>
+                {scene.videoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => onUpscaleScene(scene.id)}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-200 border border-emerald-500/40 text-xs font-semibold cursor-pointer transition-colors"
+                  >
+                    Retry 4K Upscale
+                  </button>
+                )}
+              </div>
             </div>
           )
+        ) : scene.videoUrl ? (
+          <div className="relative w-full h-full flex items-center justify-center bg-black">
+            <video
+              src={scene.videoUrl}
+              controls
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="w-full h-full object-contain rounded-xl max-h-[260px]"
+            />
+            <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-sm text-[10px] text-emerald-400 font-mono flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+              <span>{scene.isUpscaled ? 'True 4K UHD Ready' : 'AI Video Ready'}</span>
+            </div>
+          </div>
         ) : (
           <div className="p-3 w-full space-y-3">
             {scene.startImageUrl ? (
@@ -436,15 +462,28 @@ export const StoryboardCard: React.FC<StoryboardCardProps> = ({
         </button>
 
         {scene.videoUrl && (
-          <button
-            type="button"
-            onClick={() => onUpscaleScene(scene.id)}
-            title="Upscale clip to ultra-sharp 4K"
-            className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-emerald-400 border border-emerald-500/20 text-xs font-black flex items-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>4K</span>
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => onUpscaleScene(scene.id)}
+              disabled={scene.status === 'generating'}
+              title="Upscale clip to True 4K UHD (2160p/3840p)"
+              className="px-3 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-emerald-400 border border-emerald-500/20 text-xs font-black flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>4K</span>
+            </button>
+            <a
+              href={scene.videoUrl}
+              download={`scene_${scene.sceneNumber}_${scene.isUpscaled ? '4K_UHD' : '1080p'}.mp4`}
+              target="_blank"
+              rel="noreferrer"
+              title={scene.isUpscaled ? 'Download True 4K UHD Video' : 'Download Scene Video'}
+              className="p-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center transition-colors shadow-md shadow-emerald-950/50 cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+            </a>
+          </>
         )}
       </div>
     </div>

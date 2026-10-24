@@ -270,12 +270,12 @@ def generate_video_api(
         print(f"\n🎬 Generation Request: {str(prompt)[:80]}...")
         # Use 16:9 landscape or match source image aspect if appropriate, or requested aspect
         if aspect_ratio == "16:9":
-            w, h = 1280, 720
+            w, h = 1920, 1080
         elif aspect_ratio == "1:1":
-            w, h = 960, 960
+            w, h = 1080, 1080
         else:
-            # For 9:16, use 720x1080 (clean vertical social format that preserves horizontal food width)
-            w, h = 720, 1080
+            # 9:16 Full HD 1080p vertical format
+            w, h = 1080, 1920
 
         fps = 24
         duration_sec = float(duration_sec or 5)
@@ -291,7 +291,7 @@ def generate_video_api(
         if start_pil is None:
             start_pil = create_procedural_scene(prompt, w, h)
 
-        print(f"Synthesizing {num_frames} Cinema HD frames ({w}x{h} @ {fps}fps) on {DEVICE.upper()}...")
+        print(f"Synthesizing {num_frames} Cinema 1080p frames ({w}x{h} @ {fps}fps) on {DEVICE.upper()}...")
         final_frames = synthesize_gpu_motion_frames(
             start_pil=start_pil,
             end_pil=end_pil,
@@ -307,15 +307,15 @@ def generate_video_api(
             temp_path,
             fps=fps,
             codec="libx264",
-            quality=8,
             pixelformat="yuv420p",
             macro_block_size=8,
+            output_params=["-preset", "ultrafast", "-crf", "18"],
         )
         for f in final_frames:
             writer.append_data(f)
         writer.close()
 
-        print(f"✅ Video generated successfully: {temp_path} ({os.path.getsize(temp_path)} bytes)")
+        print(f"✅ 1080p Video generated successfully: {temp_path} ({os.path.getsize(temp_path)} bytes)")
         return temp_path
     except Exception as e:
         import traceback
@@ -352,33 +352,39 @@ def resolve_local_or_remote_video(input_video_path: str) -> str:
     raise FileNotFoundError(f"Could not locate video for upscaling: {input_video_path}")
 
 
-def upscale_video_api(input_video_path, scale=2):
-    """GPU-Accelerated 4K Super-Resolution Upscaler with Unsharp Mask."""
+def upscale_video_api(input_video_path, scale=4):
+    """GPU-Accelerated True 4K UHD (3840x2160 / 2160x3840) Super-Resolution Upscaler."""
     try:
-        scale = int(scale or 2)
         resolved_path = resolve_local_or_remote_video(input_video_path)
-        print(f"🔍 GPU 4K Upscaling video: {resolved_path} ({scale}x)...")
+        print(f"🔍 GPU True 4K UHD Upscaling video: {resolved_path}...")
 
         reader = imageio.get_reader(resolved_path)
         meta = reader.get_meta_data()
         fps = meta.get("fps", 24)
-        out_path = os.path.join(tempfile.gettempdir(), f"upscaled_4k_{uuid.uuid4().hex[:8]}.mp4")
+        out_path = os.path.join(tempfile.gettempdir(), f"chromaflow_4K_UHD_{uuid.uuid4().hex[:8]}.mp4")
         writer = imageio.get_writer(
             out_path,
             fps=fps,
             codec="libx264",
-            quality=9,
             pixelformat="yuv420p",
             macro_block_size=8,
+            output_params=["-preset", "ultrafast", "-crf", "18"],
         )
 
+        target_w, target_h = None, None
         for frame in reader:
-            h, w = frame.shape[:2]
-            # Cap maximum dimension at 2160p (4K UHD) for fast GPU encoding
-            target_w = min(3840, ((w * scale) // 8) * 8)
-            target_h = min(2160, ((h * scale) // 8) * 8)
+            if target_w is None:
+                h, w = frame.shape[:2]
+                # True 4K UHD resolution preserving orientation (Landscape 3840x2160, Vertical 2160x3840, Square 2160x2160)
+                if w > h:
+                    target_w, target_h = 3840, 2160
+                elif h > w:
+                    target_w, target_h = 2160, 3840
+                else:
+                    target_w, target_h = 2160, 2160
+                print(f"Upscaling frames from {w}x{h} -> True 4K UHD ({target_w}x{target_h})...")
 
-            # Fast GPU bicubic upscale + detail sharpening
+            # Fast GPU bicubic upscale + detail unsharp mask
             t_frame = torch.from_numpy(frame).permute(2, 0, 1).unsqueeze(0).float().to(DEVICE)
             up_t = F.interpolate(t_frame, size=(target_h, target_w), mode="bicubic", align_corners=False)
             blur_t = F.avg_pool2d(F.pad(up_t, (1, 1, 1, 1), mode="replicate"), kernel_size=3, stride=1)
@@ -389,7 +395,7 @@ def upscale_video_api(input_video_path, scale=2):
 
         writer.close()
         reader.close()
-        print(f"✅ 4K Upscale complete: {out_path} ({os.path.getsize(out_path)} bytes)")
+        print(f"✅ True 4K UHD Upscale complete ({target_w}x{target_h}): {out_path} ({os.path.getsize(out_path)} bytes)")
         return out_path
     except Exception as e:
         import traceback

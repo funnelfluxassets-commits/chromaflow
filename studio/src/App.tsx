@@ -291,62 +291,82 @@ export const App: React.FC = () => {
     }
   };
 
-  // Upscale Scene to 4K Super-Resolution
+  // Upscale Scene to True 4K UHD Super-Resolution
   const handleUpscaleScene = async (id: string) => {
     const targetScene = scenes.find((s) => s.id === id);
     if (!targetScene || !targetScene.videoUrl) return;
 
-    if (colabUrl) {
+    if (!colabUrl) {
       setScenes((prev) =>
         prev.map((s) =>
           s.id === id
             ? {
                 ...s,
-                status: 'generating',
-                progress: 25,
-                progressStage: 'Colab GPU: 4K Super-Resolution upscaling in progress...',
+                status: 'failed',
+                errorMessage: 'Please connect your Google Colab GPU server first to upscale to True 4K UHD.',
               }
             : s
         )
       );
+      return;
+    }
 
-      try {
-        const onProg = (stage: string, percent: number, elapsed: number) => {
-          setScenes((prev) =>
-            prev.map((s) =>
-              s.id === id
-                ? { ...s, progressStage: stage, progress: percent, elapsedSec: elapsed }
-                : s
-            )
-          );
-        };
+    setScenes((prev) =>
+      prev.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              status: 'generating',
+              progress: 20,
+              elapsedSec: 0,
+              errorMessage: undefined,
+              progressStage: 'Colab GPU: True 4K UHD (2160p/3840p) upscaling in progress...',
+            }
+          : s
+      )
+    );
 
-        const upscaledUrl = await upscaleVideoColab(targetScene.videoUrl, colabUrl, 2, onProg);
+    try {
+      const onProg = (stage: string, percent: number, elapsed: number) => {
         setScenes((prev) =>
           prev.map((s) =>
             s.id === id
-              ? {
-                  ...s,
-                  status: 'completed',
-                  progress: 100,
-                  progressStage: '4K Enhancement Complete',
-                  videoUrl: upscaledUrl,
-                  isUpscaled: true,
-                }
+              ? { ...s, progressStage: stage, progress: percent, elapsedSec: elapsed }
               : s
           )
         );
-      } catch (err) {
-        // Fallback optimistic tag
-        setScenes((prev) =>
-          prev.map((s) =>
-            s.id === id ? { ...s, status: 'completed', isUpscaled: true } : s
-          )
-        );
-      }
-    } else {
+      };
+
+      const upscaledUrl = await upscaleVideoColab(targetScene.videoUrl, colabUrl, 4, onProg);
       setScenes((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, isUpscaled: true } : s))
+        prev.map((s) =>
+          s.id === id
+            ? {
+                ...s,
+                status: 'completed',
+                progress: 100,
+                progressStage: 'True 4K UHD Enhancement Complete',
+                videoUrl: upscaledUrl,
+                isUpscaled: true,
+                errorMessage: undefined,
+              }
+            : s
+        )
+      );
+      setFinalMovieUrl(upscaledUrl);
+    } catch (err: any) {
+      const msg = err.message || '4K Upscale failed. Please check that Step 3 in Google Colab is running.';
+      setScenes((prev) =>
+        prev.map((s) =>
+          s.id === id
+            ? {
+                ...s,
+                status: 'failed',
+                progressStage: '4K Upscale Failed',
+                errorMessage: msg,
+              }
+            : s
+        )
       );
     }
   };

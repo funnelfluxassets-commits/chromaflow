@@ -482,7 +482,7 @@ async function streamGradioResult(
 export async function upscaleVideoColab(
   videoUrl: string,
   colabUrl: string,
-  scale: number = 2,
+  scale: number = 4,
   onProgress?: ProgressCallback
 ): Promise<string> {
   const cleanUrl = colabUrl.trim().replace(/\/$/, '');
@@ -490,22 +490,34 @@ export async function upscaleVideoColab(
     throw new Error('Please configure your Google Colab Gradio Tunnel URL in Settings');
   }
 
-  onProgress?.('Connecting to Colab 4K Super-Resolution Engine...', 20, 1);
+  onProgress?.('Connecting to Colab True 4K UHD Super-Resolution Engine...', 20, 1);
 
   const payload = {
     data: [videoUrl, scale],
   };
 
-  const startTime = Date.now();
-  onProgress?.(`Synthesizing 4K super-resolution frames (${scale}x)...`, 50, 4);
+  onProgress?.('Synthesizing True 4K UHD (2160p/3840p) frames on GPU...', 35, 2);
 
-  const postRes = await fetch(`${cleanUrl}/gradio_api/call/upscale_video`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  let postRes: Response;
+  try {
+    postRes = await fetch(`${cleanUrl}/gradio_api/call/upscale_video`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new Error(
+      'Could not reach your Google Colab GPU server. Please make sure Step 3 in Colab is running and paste the active .gradio.live link.'
+    );
+  }
 
   if (!postRes.ok) {
+    const errText = await postRes.text().catch(() => '');
+    if (errText.includes('No interface is running')) {
+      throw new Error(
+        'Your Google Colab server has stopped. Please click Play on Step 3 in Colab and paste the new .gradio.live link.'
+      );
+    }
     throw new Error(`Colab 4K upscaler returned error status ${postRes.status}`);
   }
 
@@ -520,12 +532,12 @@ export async function upscaleVideoColab(
     'upscale_video',
     eventId,
     (elapsed) => {
-      const percent = Math.min(95, 25 + Math.round((elapsed / 45) * 70));
-      onProgress?.(`Colab GPU upscaling frames to 4K (${elapsed}s elapsed)...`, percent, elapsed);
+      const percent = Math.min(95, 25 + Math.round((elapsed / 35) * 70));
+      onProgress?.(`Colab GPU upscaling frames to True 4K UHD (${elapsed}s elapsed)...`, percent, elapsed);
     },
     10 * 60
   ).then((url) => {
-    onProgress?.('4K Super-Resolution Complete!', 100, 0);
+    onProgress?.('True 4K UHD Super-Resolution Complete!', 100, 0);
     return url;
   });
 }
